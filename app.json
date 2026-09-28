@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "BuddyGrade BLE",
+    "slug": "buddy-grade-ble",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["android", "ios", "web"],
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
