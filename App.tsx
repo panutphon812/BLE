@@ -290,35 +290,24 @@ export default function App() {
           </View>
         </View>
 
-        <View style={[styles.hero, width < 760 && styles.heroMobile]}>
-          {width >= 900 ? (
-            <View pointerEvents="none" style={styles.heroArtwork}>
-              <View style={styles.orbitOuter} />
-              <View style={styles.orbitInner} />
-              <View style={styles.signalCore}><Text style={styles.signalSymbol}>ᛒ</Text></View>
-              <View style={styles.signalTag}><View style={styles.signalDot} /><Text style={styles.signalTagText}>A little signal. A big connection.</Text></View>
-              <View style={styles.orbitNode} />
-            </View>
-          ) : null}
-          <Text style={styles.eyebrow}>BUDDY UP. CONNECT. DISCOVER.</Text>
-          <Text style={styles.heroTitle}>สองชื่อ หนึ่งทีม{ '\n' }เชื่อมต่อความเป็นไปได้</Text>
+        <View style={styles.hero}>
+          <Text style={styles.eyebrow}>YOUR BLE GRADE CHECK</Text>
+          <Text style={styles.heroTitle}>ส่งชื่อทีม{ '\n' }แล้วอ่านผลไปพร้อมกัน</Text>
           <Text style={styles.heroText}>
             เชื่อมต่ออุปกรณ์ของอาจารย์ อ่านค่าเริ่มต้น ส่งชื่อคุณกับเพื่อน แล้วอ่านผลที่อุปกรณ์ตอบกลับ
           </Text>
           <View style={styles.uuidStrip}>
-            <View style={styles.signalDot} />
-            <Text style={styles.uuidValue}>Bluetooth Low Energy · Classroom edition</Text>
+            <Text style={styles.uuidLabel}>SERVICE</Text>
+            <Text selectable style={styles.uuidValue}>{SERVICE_UUID}</Text>
           </View>
         </View>
 
         <View style={styles.stepsRow}>
           <Step number="01" label="เชื่อมต่อ" active={connected} />
           <View style={styles.stepLine} />
-          <Step number="02" label="อ่านค่า" active={Boolean(initialValue)} />
+          <Step number="02" label="ส่งชื่อทีม" active={Boolean(writtenValue)} />
           <View style={styles.stepLine} />
-          <Step number="03" label="ส่งชื่อ" active={Boolean(writtenValue)} />
-          <View style={styles.stepLine} />
-          <Step number="04" label="อ่านผล" active={Boolean(predictedValue)} />
+          <Step number="03" label="อ่านผล" active={Boolean(predictedValue)} />
         </View>
 
         {showNativeNotice ? (
@@ -346,7 +335,7 @@ export default function App() {
           <View style={[styles.mainColumn, width < 760 && styles.columnNarrow]}>
             <View style={styles.panel}>
               <SectionHeading number="01" title="เชื่อมต่ออุปกรณ์" caption="เลือกอุปกรณ์ BLE ที่กำลังเปิดอยู่ใกล้คุณ" />
-              <View style={[styles.connectionRow, width < 430 && styles.connectionNarrow]}>
+              <View style={styles.connectionRow}>
                 <View style={styles.deviceInfo}>
                   <Text style={styles.fieldLabel}>สถานะการเชื่อมต่อ</Text>
                   <Text style={styles.deviceName}>{connected ? deviceName : 'ยังไม่มีอุปกรณ์'}</Text>
@@ -356,7 +345,6 @@ export default function App() {
                   label={connected ? 'ตัดการเชื่อมต่อ' : 'ค้นหาอุปกรณ์'}
                   onPress={connected ? disconnectDevice : connectDevice}
                   disabled={isBusy || showNativeNotice || !secureContext || !bluetoothSupported}
-                  loading={busyAction === 'connect'}
                   tone={connected ? 'quiet' : 'primary'}
                 />
               </View>
@@ -415,7 +403,7 @@ export default function App() {
               </View>
               <View style={styles.previewBox}>
                 <Text style={styles.readoutLabel}>VALUE TO WRITE</Text>
-                <Text selectable style={styles.previewText}>{studentName.trim() || buddyName.trim() ? writeValue : 'ชื่อของคุณ, ชื่อเพื่อน'}</Text>
+                <Text selectable style={styles.previewText}>{writeValue || 'ชื่อของคุณ, ชื่อเพื่อน'}</Text>
               </View>
               <ActionButton
                 label="เขียนชื่อไปยังอุปกรณ์"
@@ -433,7 +421,6 @@ export default function App() {
                 <Text style={styles.resultEyebrow}>TEAM RESULT</Text>
                 <View style={styles.resultBadge}><Text style={styles.resultBadgeText}>BLE</Text></View>
               </View>
-              <View style={styles.resultDecoration}><Text style={styles.resultDecorationText}>✦</Text></View>
               <Text style={styles.resultTitle}>ผลทำนาย{ '\n' }จากอุปกรณ์</Text>
               <Text style={styles.resultDescription}>
                 หลังเขียนชื่อแล้ว กดปุ่มด้านล่างเพื่ออ่านค่า Characteristic อีกครั้ง
@@ -521,7 +508,6 @@ function ActionButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled, busy: loading }}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
@@ -531,7 +517,7 @@ function ActionButton({
         pressed && !disabled && styles.buttonPressed,
       ]}
     >
-      {loading ? <ActivityIndicator color={tone === 'secondary' || tone === 'quiet' ? '#285C45' : '#FFFFFF'} size="small" /> : null}
+      {loading ? <ActivityIndicator color={tone === 'light' ? '#17394B' : '#FFFFFF'} size="small" /> : null}
       <Text style={[styles.buttonText, styles[`buttonText_${tone}`], disabled && styles.buttonTextDisabled]}>
         {loading ? 'กำลังทำรายการ…' : label}
       </Text>
@@ -539,7 +525,7 @@ function ActionButton({
   );
 }
 
-const baseStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   page: {
     flexGrow: 1,
     backgroundColor: '#F4F6FC',
@@ -728,86 +714,4 @@ const baseStyles = StyleSheet.create({
   errorText: { color: '#805354', fontSize: 11, lineHeight: 17, marginTop: 4 },
   footer: { borderTopWidth: 1, borderTopColor: '#DEE2EC', marginTop: 24, paddingTop: 15, gap: 5 },
   footerText: { color: '#8790A6', fontSize: 9, fontVariant: ['tabular-nums'] },
-});
-
-const styles = StyleSheet.create({
-  ...baseStyles,
-  page: { ...baseStyles.page, backgroundColor: '#F7F6F2', paddingVertical: 28, paddingHorizontal: 20 },
-  brandRow: { ...baseStyles.brandRow, flexWrap: 'wrap', rowGap: 12 },
-  brandMark: { ...baseStyles.brandMark, backgroundColor: '#173E3C', borderRadius: 16 },
-  brandMarkText: { ...baseStyles.brandMarkText, color: '#C6F4CD' },
-  brandName: { ...baseStyles.brandName, color: '#173E3C', fontSize: 18 },
-  brandCaption: { ...baseStyles.brandCaption, color: '#697C75' },
-  statusIdle: { backgroundColor: '#ECEDE6' },
-  hero: { ...baseStyles.hero, backgroundColor: '#153D3B', borderColor: '#244C46', padding: 38, borderRadius: 30, shadowColor: '#173E3C' },
-  heroMobile: { padding: 25, borderRadius: 24 },
-  eyebrow: { ...baseStyles.eyebrow, color: '#B9E9BD', fontSize: 11, letterSpacing: 1.6 },
-  heroTitle: { ...baseStyles.heroTitle, fontSize: 38, lineHeight: 49, maxWidth: 530 },
-  heroText: { ...baseStyles.heroText, color: '#C7DCD4', maxWidth: 460, fontSize: 14, lineHeight: 25 },
-  uuidStrip: { ...baseStyles.uuidStrip, borderRadius: 99, backgroundColor: '#254E46', borderColor: '#426359', gap: 8, paddingVertical: 10 },
-  uuidValue: { ...baseStyles.uuidValue, color: '#D1ECD6', fontSize: 11, flexShrink: 1 },
-  heroArtwork: { position: 'absolute', right: 34, top: 20, width: 270, height: 285, alignItems: 'center', justifyContent: 'center' },
-  orbitOuter: { position: 'absolute', width: 254, height: 254, borderRadius: 127, borderWidth: 1, borderColor: '#41665B' },
-  orbitInner: { position: 'absolute', width: 192, height: 192, borderRadius: 96, borderWidth: 1, borderColor: '#527366', backgroundColor: '#234A43' },
-  signalCore: { width: 122, height: 122, borderRadius: 36, backgroundColor: '#C8ECA7', alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-10deg' }], shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 18, shadowOffset: { width: 0, height: 9 } },
-  signalSymbol: { fontSize: 83, lineHeight: 104, color: '#153D3B', fontWeight: '400', transform: [{ rotate: '10deg' }] },
-  signalTag: { position: 'absolute', bottom: 12, backgroundColor: '#F6F6ED', borderRadius: 99, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 7, transform: [{ rotate: '-4deg' }] },
-  signalTagText: { color: '#254C43', fontSize: 10, fontWeight: '700' },
-  signalDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#A4D88A', flexShrink: 0 },
-  orbitNode: { position: 'absolute', right: 21, top: 40, width: 18, height: 18, borderRadius: 9, backgroundColor: '#F6BA90', borderWidth: 4, borderColor: '#153D3B' },
-  stepsRow: { ...baseStyles.stepsRow, paddingVertical: 25 },
-  step: { flex: 1, alignItems: 'center', gap: 8 },
-  stepNumber: { ...baseStyles.stepNumber, backgroundColor: '#E8ECE3', width: 32, height: 32, borderRadius: 11 },
-  stepNumberActive: { backgroundColor: '#D6E8CA' },
-  stepNumberText: { ...baseStyles.stepNumberText, fontSize: 10, color: '#697C75' },
-  stepNumberTextActive: { color: '#285A43' },
-  stepLabel: { ...baseStyles.stepLabel, marginLeft: 0, color: '#68796F', fontSize: 12 },
-  stepLabelActive: { color: '#285A43' },
-  stepLine: { height: 1, backgroundColor: '#D8DFD3', flex: 0.35, marginHorizontal: 4, marginBottom: 22 },
-  panel: { ...baseStyles.panel, borderColor: '#E4E8DF', borderRadius: 23, padding: 24, shadowColor: '#274B35' },
-  sectionNumber: { color: '#3E6545', fontSize: 11, fontWeight: '800', marginRight: 12, backgroundColor: '#E8F0DF', borderRadius: 9, paddingHorizontal: 8, paddingVertical: 7 },
-  sectionTitle: { ...baseStyles.sectionTitle, color: '#213D36', fontSize: 19 },
-  sectionCaption: { ...baseStyles.sectionCaption, color: '#6E8076', fontSize: 12, lineHeight: 20 },
-  fieldLabel: { ...baseStyles.fieldLabel, color: '#637C6E', fontSize: 11 },
-  deviceName: { ...baseStyles.deviceName, color: '#254C3C', fontSize: 17 },
-  helperText: { ...baseStyles.helperText, color: '#6E8076', fontSize: 12, lineHeight: 20 },
-  connectionNarrow: { flexDirection: 'column', alignItems: 'stretch' },
-  deviceInfo: { ...baseStyles.deviceInfo, flexBasis: 'auto' },
-  uuidSmall: { ...baseStyles.uuidSmall, color: '#788A7D', fontSize: 11, flexShrink: 1 },
-  readoutBox: { ...baseStyles.readoutBox, backgroundColor: '#F2F5EE', borderColor: '#E5ECDE', minHeight: 94 },
-  readoutLabel: { ...baseStyles.readoutLabel, color: '#738572', fontSize: 10 },
-  readoutValue: { ...baseStyles.readoutValue, color: '#29493B', fontSize: 18 },
-  input: { ...baseStyles.input, backgroundColor: '#FBFCF9', borderColor: '#DDE5D6', borderRadius: 14, paddingVertical: 14, fontSize: 15, color: '#254C3C' },
-  previewBox: { ...baseStyles.previewBox, backgroundColor: '#F2F5EE', borderColor: '#E5ECDE' },
-  previewText: { ...baseStyles.previewText, color: '#526C57', fontSize: 14 },
-  button: { ...baseStyles.button, minHeight: 49, borderRadius: 14 },
-  button_primary: { backgroundColor: '#285C45' },
-  button_secondary: { backgroundColor: '#E9F1E0', borderWidth: 1, borderColor: '#D7E6C8' },
-  button_quiet: { backgroundColor: '#EDF0E8' },
-  button_light: { backgroundColor: '#173E3C' },
-  buttonText: { ...baseStyles.buttonText, fontSize: 13 },
-  buttonText_secondary: { color: '#3F6440' },
-  buttonText_light: { color: '#FFFFFF' },
-  buttonDisabled: { backgroundColor: '#E9ECE5', borderColor: '#E9ECE5' },
-  buttonTextDisabled: { color: '#6D7A6E' },
-  resultPanel: { ...baseStyles.resultPanel, backgroundColor: '#F8E5D6', borderColor: '#EBD5C3', shadowColor: '#875D3D', borderRadius: 25, padding: 27 },
-  resultEyebrow: { ...baseStyles.resultEyebrow, color: '#91633E', fontSize: 10 },
-  resultBadge: { ...baseStyles.resultBadge, backgroundColor: '#ECD2BA' },
-  resultBadgeText: { ...baseStyles.resultBadgeText, color: '#805C3E' },
-  resultDecoration: { width: 51, height: 51, borderRadius: 16, backgroundColor: '#FDF5EB', justifyContent: 'center', alignItems: 'center', marginTop: 24, transform: [{ rotate: '8deg' }] },
-  resultDecorationText: { fontSize: 31, color: '#986237' },
-  resultTitle: { ...baseStyles.resultTitle, color: '#3E4433', fontSize: 28, lineHeight: 37, marginTop: 14 },
-  resultDescription: { ...baseStyles.resultDescription, color: '#806F5B', fontSize: 13, lineHeight: 22 },
-  resultReadout: { ...baseStyles.resultReadout, backgroundColor: '#FFFAF4', borderColor: '#EBDAC8', minHeight: 158, padding: 22 },
-  resultReadoutLabel: { ...baseStyles.resultReadoutLabel, color: '#947C62', fontSize: 10 },
-  resultValue: { ...baseStyles.resultValue, color: '#285C45', fontSize: 43 },
-  resultPlaceholder: { color: '#CDBFAE' },
-  resultTeam: { ...baseStyles.resultTeam, color: '#7D785F', fontSize: 12, lineHeight: 20 },
-  resultHint: { ...baseStyles.resultHint, color: '#806F5B', fontSize: 11, lineHeight: 18 },
-  notePanel: { ...baseStyles.notePanel, borderColor: '#E4E8DF', padding: 22 },
-  noteTitle: { ...baseStyles.noteTitle, color: '#29493B', fontSize: 15 },
-  noteItem: { ...baseStyles.noteItem, color: '#6E8076', fontSize: 12, lineHeight: 21 },
-  noteNumber: { color: '#285C45', fontWeight: '900' },
-  footer: { ...baseStyles.footer, borderTopColor: '#DCE3D6' },
-  footerText: { ...baseStyles.footerText, color: '#7E8D7C', fontSize: 10 },
 });
