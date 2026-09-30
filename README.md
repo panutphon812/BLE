@@ -13,6 +13,31 @@ The app uses the Web Bluetooth API on the web. Use Chrome or another browser tha
 
 Expo Go can display the app interface, but it cannot access the BLE device from inside Expo Go. The real BLE workflow runs in the web version in a compatible browser. A native BLE version would need an Expo development build.
 
+## Open on iPhone with Expo Go (screen preview)
+
+Run `npm run mobile` on the computer and keep the server running. This command
+prefers the computer's Wi-Fi address when multiple adapters are active. Connect the
+iPhone and computer to the same Wi-Fi. Install an Expo Go version compatible
+with this project's SDK 57, scan the terminal QR code with the iPhone Camera,
+and open it in Expo Go. If Expo asks for a login, sign in to the same Expo
+account in Expo Go and Expo CLI (`npx expo login`).
+
+Expo Go opens the interface and lets you enter names. Bluetooth controls are
+disabled there because the current Bluetooth transport uses Web Bluetooth.
+Real BLE on an iPhone requires a native Development Build with an appropriate
+Bluetooth library and iOS signing; it is not enabled by this preview setup.
+
+If the QR address chooses the wrong network adapter, start PowerShell with:
+
+```powershell
+$env:REACT_NATIVE_PACKAGER_HOSTNAME = 'YOUR_COMPUTER_WIFI_IP'
+npm run mobile -- --port 8082
+```
+
+Replace the IP with the computer's Wi-Fi address. A phone cannot connect using
+the computer's `localhost` address. Network isolation or a firewall may block
+LAN access; `npx expo start --go --tunnel` can be used when LAN is unavailable.
+
 ## Device settings
 
 - Service UUID: `aee04821-1973-4e1f-a590-e84b10d580e7`

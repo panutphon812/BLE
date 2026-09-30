@@ -6,19 +6,20 @@
   "scripts": {
     "test": "node tests/ble.test.cjs",
     "start": "expo start",
+    "mobile": "node scripts/start-mobile.cjs",
     "web": "expo start --web",
     "android": "expo start --android"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.0",
-    "expo": "~57.0.0",
+    "expo": "~57.0.26",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-native": "0.86.0",
+    "react-native": "0.86.3",
     "react-native-web": "~0.21.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.0",
-    "typescript": "~5.9.2"
+    "typescript": "~6.0.3"
   }
 }

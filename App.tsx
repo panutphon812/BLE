@@ -16,9 +16,9 @@ export default function App() {
 
 
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.page, width < 450 && { paddingHorizontal: 16, paddingTop: 54 }]}>
       <View style={styles.content}>
-        <View style={styles.brandRow}>
+        <View style={[styles.brandRow, width < 450 && { flexWrap: 'wrap', rowGap: 12 }]}>
           <View style={styles.brandMark}><Text style={styles.brandMarkText}>BG</Text></View>
           <View>
             <Text style={styles.brandName}>BuddyGrade BLE</Text>
@@ -32,9 +32,9 @@ export default function App() {
           </View>
         </View>
 
-        <View style={styles.hero}>
+        <View style={[styles.hero, width < 450 && { padding: 23 }]}>
           <Text style={styles.eyebrow}>YOUR BLE GRADE CHECK</Text>
-          <Text style={styles.heroTitle}>ส่งชื่อทีม{ '\n' }แล้วอ่านผลไปพร้อมกัน</Text>
+          <Text style={[styles.heroTitle, width < 450 && { fontSize: 28, lineHeight: 36 }]}>ส่งชื่อทีม{ '\n' }แล้วอ่านผลไปพร้อมกัน</Text>
           <Text style={styles.heroText}>
             เชื่อมต่ออุปกรณ์ของอาจารย์ อ่านค่าเริ่มต้น ส่งชื่อคุณกับเพื่อน แล้วอ่านผลที่อุปกรณ์ตอบกลับ
           </Text>
@@ -58,7 +58,7 @@ export default function App() {
           <View style={styles.infoBanner}>
             <Text style={styles.bannerTitle}>กำลังดูตัวอย่างหน้าจอใน Expo Go</Text>
             <Text style={styles.bannerText}>
-              การเชื่อมต่ออุปกรณ์จริงใช้ Web Bluetooth กรุณาเปิดเวอร์ชันเว็บใน Chrome ผ่าน HTTPS
+              คุณสามารถดูหน้าจอและกรอกชื่อได้ใน Expo Go ส่วนการเชื่อม BLE บน iPhone ต้องใช้ Development Build
             </Text>
           </View>
         ) : !secureContext ? (

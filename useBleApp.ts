@@ -44,7 +44,7 @@ export function useBleApp() {
 
   useEffect(() => {
     disposed.current = false;
-    if (typeof window !== 'undefined') setSecureContext(window.isSecureContext);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') setSecureContext(window.isSecureContext);
     return () => {
       disposed.current = true;
       activeOperation.current = null;
