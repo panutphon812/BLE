@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { readCharacteristicValue } from './ble-read';
 import {
   ActivityIndicator,
   Platform,
@@ -59,10 +60,6 @@ function makeWriteValue(studentName: string, buddyName: string) {
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
-
-function decodeCharacteristicValue(value: DataView) {
-  return new TextDecoder('utf-8').decode(value).replace(/\u0000+$/g, '').trim();
 }
 
 function friendlyError(error: unknown) {
@@ -189,6 +186,11 @@ export default function App() {
     handleDisconnected();
   };
 
+  const readCurrentValue = (characteristic: BluetoothCharacteristic) =>
+    readCharacteristicValue(characteristic, () => {
+      if (characteristicRef.current === characteristic) disconnectDevice();
+    });
+
   const readInitialValue = async () => {
     if (lastWriteRef.current) {
       await readPrediction();
@@ -203,11 +205,13 @@ export default function App() {
 
     setBusyAction('read-initial');
     try {
-      const value = decodeCharacteristicValue(await characteristic.readValue());
+      const value = await readCurrentValue(characteristic);
+      if (characteristicRef.current !== characteristic) throw new Error('อุปกรณ์ตัดการเชื่อมต่อ กรุณาเชื่อมต่อใหม่');
       setInitialValue(value || '(อุปกรณ์ส่งค่าว่าง)');
       setPredictedValue('');
       setNotice('อ่านค่าเริ่มต้นแล้ว');
     } catch (error) {
+      setNotice('อ่านค่าไม่สำเร็จ ดูรายละเอียดข้อผิดพลาดด้านล่าง');
       setErrorMessage(friendlyError(error));
     } finally {
       setBusyAction(null);
@@ -274,15 +278,10 @@ export default function App() {
       const pendingWrite = lastWriteRef.current;
       const remainingDelay = Math.max(0, 700 - (Date.now() - lastWriteTimeRef.current));
       if (remainingDelay) await new Promise(resolve => setTimeout(resolve, remainingDelay));
-      let value = '';
-      for (let attempt = 0; attempt < 6; attempt += 1) {
-        if (characteristicRef.current !== characteristic || lastWriteRef.current !== pendingWrite) {
-          throw new Error('การเชื่อมต่อเปลี่ยนไป กรุณาเชื่อมต่อและส่งชื่อใหม่');
-        }
-        value = decodeCharacteristicValue(await characteristic.readValue());
-        if (value && value !== pendingWrite && value !== initialValue) break;
-        if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 500));
+      if (characteristicRef.current !== characteristic || lastWriteRef.current !== pendingWrite) {
+        throw new Error('การเชื่อมต่อเปลี่ยนไป กรุณาเชื่อมต่อและส่งชื่อใหม่');
       }
+      const value = await readCurrentValue(characteristic);
       if (characteristicRef.current !== characteristic) {
         throw new Error('อุปกรณ์ตัดการเชื่อมต่อ กรุณาเชื่อมต่อใหม่');
       }
@@ -293,6 +292,7 @@ export default function App() {
         ? 'อ่านค่าล่าสุดแล้ว อุปกรณ์ยังตอบเป็นชื่อที่ส่งไป ยังไม่ได้ตอบผลทำนาย'
         : value ? 'อ่านค่าล่าสุดจากอุปกรณ์แล้ว สามารถกดอ่านซ้ำได้' : 'อ่านสำเร็จ แต่อุปกรณ์ส่งค่าว่าง');
     } catch (error) {
+      setNotice('อ่านผลไม่สำเร็จ ดูรายละเอียดข้อผิดพลาดด้านล่าง');
       setErrorMessage(friendlyError(error));
     } finally {
       setBusyAction(null);
@@ -357,6 +357,13 @@ export default function App() {
           <View style={styles.infoBanner}>
             <Text style={styles.bannerTitle}>เบราว์เซอร์นี้ยังใช้ BLE ไม่ได้</Text>
             <Text style={styles.bannerText}>เปิดด้วย Chrome บนอุปกรณ์ที่มี Bluetooth แล้วลองอีกครั้ง</Text>
+          </View>
+        ) : null}
+
+        {errorMessage ? (
+          <View accessibilityRole="alert" style={[styles.errorBanner, { marginTop: 0, marginBottom: 16 }]}>
+            <Text style={styles.errorTitle}>ทำรายการไม่สำเร็จ</Text>
+            <Text selectable style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : null}
 
@@ -483,13 +490,6 @@ export default function App() {
             </View>
           </View>
         </View>
-
-        {errorMessage ? (
-          <View accessibilityRole="alert" style={styles.errorBanner}>
-            <Text style={styles.errorTitle}>ทำรายการไม่สำเร็จ</Text>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          </View>
-        ) : null}
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>SERVICE UUID · {SERVICE_UUID}</Text>
