@@ -17,6 +17,7 @@ const CHAR_UUID = 'cde07b1a-889b-44b7-a99f-c888dddac729';
 type BusyAction = 'connect' | 'read-initial' | 'write' | 'read-result' | null;
 
 type BluetoothCharacteristic = {
+  properties?: { read: boolean; write: boolean; writeWithoutResponse: boolean };
   readValue: () => Promise<DataView>;
   writeValueWithResponse?: (value: ArrayBuffer) => Promise<void>;
   writeValueWithoutResponse?: (value: ArrayBuffer) => Promise<void>;
@@ -74,6 +75,8 @@ export default function App() {
   const characteristicRef = useRef<BluetoothCharacteristic | null>(null);
   const deviceRef = useRef<BluetoothDevice | null>(null);
   const disconnectListenerRef = useRef<(() => void) | null>(null);
+  const lastWriteRef = useRef('');
+  const lastWriteTimeRef = useRef(0);
 
   const [deviceName, setDeviceName] = useState('');
   const [connected, setConnected] = useState(false);
@@ -111,6 +114,7 @@ export default function App() {
   const clearError = () => setErrorMessage('');
 
   const handleDisconnected = () => {
+    lastWriteRef.current = '';
     characteristicRef.current = null;
     deviceRef.current = null;
     disconnectListenerRef.current = null;
@@ -159,6 +163,7 @@ export default function App() {
       disconnectListenerRef.current = onDisconnected;
       setDeviceName(device.name?.trim() || 'อุปกรณ์ BLE');
       setConnected(true);
+      lastWriteRef.current = '';
       setInitialValue('');
       setWrittenValue('');
       setPredictedValue('');
@@ -185,6 +190,10 @@ export default function App() {
   };
 
   const readInitialValue = async () => {
+    if (lastWriteRef.current) {
+      await readPrediction();
+      return;
+    }
     clearError();
     const characteristic = characteristicRef.current;
     if (!characteristic) {
@@ -226,16 +235,18 @@ export default function App() {
     setPredictedValue('');
     setHasWrittenSinceRead(false);
     try {
-      if (characteristic.writeValueWithResponse) {
+      if (characteristic.properties?.write && characteristic.writeValueWithResponse) {
         await characteristic.writeValueWithResponse(bytes);
-      } else if (characteristic.writeValue) {
-        await characteristic.writeValue(bytes);
-      } else if (characteristic.writeValueWithoutResponse) {
+      } else if (characteristic.properties?.writeWithoutResponse && characteristic.writeValueWithoutResponse) {
         await characteristic.writeValueWithoutResponse(bytes);
+      } else if (!characteristic.properties && characteristic.writeValue) {
+        await characteristic.writeValue(bytes);
       } else {
         throw new Error('Characteristic นี้ไม่รองรับการเขียนค่า');
       }
       setWrittenValue(value);
+      lastWriteRef.current = value;
+      lastWriteTimeRef.current = Date.now();
       setHasWrittenSinceRead(true);
       setNotice('ส่งชื่อแล้ว กดอ่านผลทำนายเพื่ออ่านค่าจากอุปกรณ์อีกครั้ง');
     } catch (error) {
@@ -258,11 +269,30 @@ export default function App() {
     }
 
     setBusyAction('read-result');
+    setNotice('กำลังรอและอ่านคำตอบจากอุปกรณ์');
     try {
-      const value = decodeCharacteristicValue(await characteristic.readValue());
-      setPredictedValue(value || '(อุปกรณ์ส่งค่าว่าง)');
-      setHasWrittenSinceRead(false);
-      setNotice('อ่านผลจากอุปกรณ์แล้ว');
+      const pendingWrite = lastWriteRef.current;
+      const remainingDelay = Math.max(0, 700 - (Date.now() - lastWriteTimeRef.current));
+      if (remainingDelay) await new Promise(resolve => setTimeout(resolve, remainingDelay));
+      let value = '';
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        if (characteristicRef.current !== characteristic || lastWriteRef.current !== pendingWrite) {
+          throw new Error('การเชื่อมต่อเปลี่ยนไป กรุณาเชื่อมต่อและส่งชื่อใหม่');
+        }
+        value = decodeCharacteristicValue(await characteristic.readValue());
+        if (value && value !== pendingWrite && value !== initialValue) break;
+        if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      if (!value || value === pendingWrite || value === initialValue) {
+        setPredictedValue('');
+        setNotice('ยังไม่ได้รับผลใหม่ กดอ่านผลอีกครั้งได้');
+        setErrorMessage(!value
+          ? 'อุปกรณ์ตอบกลับเป็นค่าว่าง ลองอ่านผลอีกครั้ง หากยังว่างให้ตรวจโปรแกรมของอุปกรณ์'
+          : `อุปกรณ์ยังตอบกลับค่าเดิม: ${value} — ลองอ่านผลอีกครั้ง หรือตรวจรูปแบบชื่อที่อุปกรณ์ต้องการ`);
+      } else {
+        setPredictedValue(value);
+        setNotice('อ่านผลจากอุปกรณ์แล้ว สามารถกดอ่านซ้ำได้');
+      }
     } catch (error) {
       setErrorMessage(friendlyError(error));
     } finally {
@@ -440,7 +470,7 @@ export default function App() {
                 tone="light"
               />
               <Text style={styles.resultHint}>
-                {hasWrittenSinceRead ? 'พร้อมอ่านผลจากอุปกรณ์แล้ว' : 'ปุ่มจะพร้อมหลังเขียนชื่อสำเร็จ'}
+                {hasWrittenSinceRead ? 'ส่งชื่อแล้ว · กดอ่านผลหรืออ่านซ้ำได้' : 'ปุ่มจะพร้อมหลังเขียนชื่อสำเร็จ'}
               </Text>
             </View>
 
