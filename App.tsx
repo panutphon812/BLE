@@ -283,16 +283,15 @@ export default function App() {
         if (value && value !== pendingWrite && value !== initialValue) break;
         if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 500));
       }
-      if (!value || value === pendingWrite || value === initialValue) {
-        setPredictedValue('');
-        setNotice('ยังไม่ได้รับผลใหม่ กดอ่านผลอีกครั้งได้');
-        setErrorMessage(!value
-          ? 'อุปกรณ์ตอบกลับเป็นค่าว่าง ลองอ่านผลอีกครั้ง หากยังว่างให้ตรวจโปรแกรมของอุปกรณ์'
-          : `อุปกรณ์ยังตอบกลับค่าเดิม: ${value} — ลองอ่านผลอีกครั้ง หรือตรวจรูปแบบชื่อที่อุปกรณ์ต้องการ`);
-      } else {
-        setPredictedValue(value);
-        setNotice('อ่านผลจากอุปกรณ์แล้ว สามารถกดอ่านซ้ำได้');
+      if (characteristicRef.current !== characteristic) {
+        throw new Error('อุปกรณ์ตัดการเชื่อมต่อ กรุณาเชื่อมต่อใหม่');
       }
+      const displayValue = value || '(อุปกรณ์ส่งค่าว่าง)';
+      setInitialValue(displayValue);
+      setPredictedValue(displayValue);
+      setNotice(value === pendingWrite
+        ? 'อ่านค่าล่าสุดแล้ว อุปกรณ์ยังตอบเป็นชื่อที่ส่งไป ยังไม่ได้ตอบผลทำนาย'
+        : value ? 'อ่านค่าล่าสุดจากอุปกรณ์แล้ว สามารถกดอ่านซ้ำได้' : 'อ่านสำเร็จ แต่อุปกรณ์ส่งค่าว่าง');
     } catch (error) {
       setErrorMessage(friendlyError(error));
     } finally {
@@ -456,7 +455,7 @@ export default function App() {
                 หลังเขียนชื่อแล้ว กดปุ่มด้านล่างเพื่ออ่านค่า Characteristic อีกครั้ง
               </Text>
               <View style={styles.resultReadout}>
-                <Text style={styles.resultReadoutLabel}>PREDICTED GRADE</Text>
+                <Text style={styles.resultReadoutLabel}>CHARACTERISTIC RESPONSE</Text>
                 <Text selectable style={[styles.resultValue, !predictedValue && styles.resultPlaceholder]}>
                   {predictedValue || '—'}
                 </Text>
@@ -470,7 +469,9 @@ export default function App() {
                 tone="light"
               />
               <Text style={styles.resultHint}>
-                {hasWrittenSinceRead ? 'ส่งชื่อแล้ว · กดอ่านผลหรืออ่านซ้ำได้' : 'ปุ่มจะพร้อมหลังเขียนชื่อสำเร็จ'}
+                {predictedValue && predictedValue === writtenValue
+                  ? 'อุปกรณ์ตอบเป็นชื่อที่ส่งไป · ยังไม่ได้รับผลทำนายเกรด'
+                  : hasWrittenSinceRead ? 'ส่งชื่อแล้ว · กดอ่านผลหรืออ่านซ้ำได้' : 'ปุ่มจะพร้อมหลังเขียนชื่อสำเร็จ'}
               </Text>
             </View>
 
