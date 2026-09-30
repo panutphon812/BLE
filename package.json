@@ -4,6 +4,7 @@
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
+    "test": "node tests/ble.test.cjs",
     "start": "expo start",
     "web": "expo start --web",
     "android": "expo start --android"

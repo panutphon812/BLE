@@ -1,306 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { readCharacteristicValue } from './ble-read';
 import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
+  ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
-
-const SERVICE_UUID = 'aee04821-1973-4e1f-a590-e84b10d580e7';
-const CHAR_UUID = 'cde07b1a-889b-44b7-a99f-c888dddac729';
-
-type BusyAction = 'connect' | 'read-initial' | 'write' | 'read-result' | null;
-
-type BluetoothCharacteristic = {
-  properties?: { read: boolean; write: boolean; writeWithoutResponse: boolean };
-  readValue: () => Promise<DataView>;
-  writeValueWithResponse?: (value: ArrayBuffer) => Promise<void>;
-  writeValueWithoutResponse?: (value: ArrayBuffer) => Promise<void>;
-  writeValue?: (value: ArrayBuffer) => Promise<void>;
-};
-
-type BluetoothServer = {
-  connected: boolean;
-  connect: () => Promise<BluetoothServer>;
-  disconnect: () => void;
-  getPrimaryService: (serviceUuid: string) => Promise<{
-    getCharacteristic: (characteristicUuid: string) => Promise<BluetoothCharacteristic>;
-  }>;
-};
-
-type BluetoothDevice = {
-  id: string;
-  name?: string | null;
-  gatt?: BluetoothServer;
-  addEventListener: (event: 'gattserverdisconnected', listener: () => void) => void;
-  removeEventListener: (event: 'gattserverdisconnected', listener: () => void) => void;
-};
-
-type BrowserBluetooth = {
-  requestDevice: (options: {
-    acceptAllDevices: boolean;
-    optionalServices: string[];
-  }) => Promise<BluetoothDevice>;
-};
-
-function getBrowserBluetooth(): BrowserBluetooth | undefined {
-  if (typeof navigator === 'undefined') return undefined;
-  return (navigator as Navigator & { bluetooth?: BrowserBluetooth }).bluetooth;
-}
-
-function makeWriteValue(studentName: string, buddyName: string) {
-  return `${studentName.trim()}, ${buddyName.trim()}`;
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-}
-
-function friendlyError(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  return 'เกิดข้อผิดพลาดระหว่างสื่อสารกับอุปกรณ์ ลองเชื่อมต่อใหม่อีกครั้ง';
-}
+import { BUILD_VERSION, SERVICE_UUID, CHAR_UUID } from './ble-client';
+import { useBleApp } from './useBleApp';
 
 export default function App() {
   const { width } = useWindowDimensions();
-  const characteristicRef = useRef<BluetoothCharacteristic | null>(null);
-  const deviceRef = useRef<BluetoothDevice | null>(null);
-  const disconnectListenerRef = useRef<(() => void) | null>(null);
-  const lastWriteRef = useRef('');
-  const lastWriteTimeRef = useRef(0);
+  const {
+    deviceName, connected, studentName, setStudentName, buddyName, setBuddyName,
+    initialValue, writtenValue, predictedValue, hasWrittenSinceRead, busyAction,
+    notice, errorMessage, secureContext, writeValue, capabilities, diagnostics,
+    diagnosticsOpen, setDiagnosticsOpen, connectDevice, disconnectDevice,
+    readInitialValue, writeNames, readPrediction, isBusy, showNativeNotice, bluetoothSupported,
+  } = useBleApp();
 
-  const [deviceName, setDeviceName] = useState('');
-  const [connected, setConnected] = useState(false);
-  const [studentName, setStudentName] = useState('');
-  const [buddyName, setBuddyName] = useState('');
-  const [initialValue, setInitialValue] = useState('');
-  const [writtenValue, setWrittenValue] = useState('');
-  const [predictedValue, setPredictedValue] = useState('');
-  const [hasWrittenSinceRead, setHasWrittenSinceRead] = useState(false);
-  const [busyAction, setBusyAction] = useState<BusyAction>(null);
-  const [notice, setNotice] = useState('ยังไม่ได้เชื่อมต่ออุปกรณ์');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [secureContext, setSecureContext] = useState(false);
-
-  const writeValue = useMemo(
-    () => makeWriteValue(studentName, buddyName),
-    [studentName, buddyName],
-  );
-
-  const bluetoothSupported = Platform.OS === 'web' && Boolean(getBrowserBluetooth());
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') setSecureContext(window.isSecureContext);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      const device = deviceRef.current;
-      const listener = disconnectListenerRef.current;
-      if (device && listener) device.removeEventListener('gattserverdisconnected', listener);
-      if (device?.gatt?.connected) device.gatt.disconnect();
-    };
-  }, []);
-
-  const clearError = () => setErrorMessage('');
-
-  const handleDisconnected = () => {
-    lastWriteRef.current = '';
-    characteristicRef.current = null;
-    deviceRef.current = null;
-    disconnectListenerRef.current = null;
-    setConnected(false);
-    setDeviceName('');
-    setHasWrittenSinceRead(false);
-    setNotice('การเชื่อมต่อสิ้นสุดแล้ว');
-  };
-
-  const connectDevice = async () => {
-    clearError();
-    if (Platform.OS !== 'web') {
-      setErrorMessage('Expo Go แสดงหน้าจอได้ แต่เชื่อม BLE จากในแอปไม่ได้ กรุณาเปิดเวอร์ชันเว็บใน Chrome');
-      return;
-    }
-    if (!secureContext) {
-      setErrorMessage('Web Bluetooth ต้องใช้ HTTPS หรือ localhost กรุณาเปิดแอปจากที่อยู่ที่ปลอดภัย');
-      return;
-    }
-
-    const bluetooth = getBrowserBluetooth();
-    if (!bluetooth) {
-      setErrorMessage('เบราว์เซอร์นี้ไม่รองรับ Web Bluetooth กรุณาเปิดด้วย Chrome บนอุปกรณ์ที่มี Bluetooth');
-      return;
-    }
-
-    setBusyAction('connect');
-    setNotice('กำลังค้นหาอุปกรณ์ BLE');
-    let connectingDevice: BluetoothDevice | null = null;
-    try {
-      const device = await bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: [SERVICE_UUID],
-      });
-      connectingDevice = device;
-      if (!device.gatt) throw new Error('อุปกรณ์นี้ไม่มี GATT server');
-
-      const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(SERVICE_UUID);
-      const characteristic = await service.getCharacteristic(CHAR_UUID);
-
-      const onDisconnected = () => handleDisconnected();
-      device.addEventListener('gattserverdisconnected', onDisconnected);
-      characteristicRef.current = characteristic;
-      deviceRef.current = device;
-      disconnectListenerRef.current = onDisconnected;
-      setDeviceName(device.name?.trim() || 'อุปกรณ์ BLE');
-      setConnected(true);
-      lastWriteRef.current = '';
-      setInitialValue('');
-      setWrittenValue('');
-      setPredictedValue('');
-      setHasWrittenSinceRead(false);
-      setNotice('เชื่อมต่อแล้ว อ่านค่าเริ่มต้นจากอุปกรณ์ได้เลย');
-    } catch (error) {
-      if (connectingDevice?.gatt?.connected) connectingDevice.gatt.disconnect();
-      setNotice('ยังไม่ได้เชื่อมต่ออุปกรณ์');
-      setErrorMessage(friendlyError(error));
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const disconnectDevice = () => {
-    clearError();
-    const device = deviceRef.current;
-    if (device) {
-      const listener = disconnectListenerRef.current;
-      if (listener) device.removeEventListener('gattserverdisconnected', listener);
-      if (device.gatt?.connected) device.gatt.disconnect();
-    }
-    handleDisconnected();
-  };
-
-  const readCurrentValue = (characteristic: BluetoothCharacteristic) =>
-    readCharacteristicValue(characteristic, () => {
-      if (characteristicRef.current === characteristic) disconnectDevice();
-    });
-
-  const readInitialValue = async () => {
-    if (lastWriteRef.current) {
-      await readPrediction();
-      return;
-    }
-    clearError();
-    const characteristic = characteristicRef.current;
-    if (!characteristic) {
-      setErrorMessage('กรุณาเชื่อมต่ออุปกรณ์ก่อนอ่านค่า');
-      return;
-    }
-
-    setBusyAction('read-initial');
-    try {
-      const value = await readCurrentValue(characteristic);
-      if (characteristicRef.current !== characteristic) throw new Error('อุปกรณ์ตัดการเชื่อมต่อ กรุณาเชื่อมต่อใหม่');
-      setInitialValue(value || '(อุปกรณ์ส่งค่าว่าง)');
-      setPredictedValue('');
-      setNotice('อ่านค่าเริ่มต้นแล้ว');
-    } catch (error) {
-      setNotice('อ่านค่าไม่สำเร็จ ดูรายละเอียดข้อผิดพลาดด้านล่าง');
-      setErrorMessage(friendlyError(error));
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const writeNames = async () => {
-    clearError();
-    const characteristic = characteristicRef.current;
-    if (!characteristic) {
-      setErrorMessage('กรุณาเชื่อมต่ออุปกรณ์ก่อนเขียนค่า');
-      return;
-    }
-
-    const cleanStudentName = studentName.trim();
-    const cleanBuddyName = buddyName.trim();
-    if (!cleanStudentName || !cleanBuddyName) {
-      setErrorMessage('กรอกชื่อของคุณและชื่อเพื่อนให้ครบก่อนส่ง');
-      return;
-    }
-
-    const value = makeWriteValue(cleanStudentName, cleanBuddyName);
-    const bytes = toArrayBuffer(new TextEncoder().encode(value));
-    setBusyAction('write');
-    setPredictedValue('');
-    setHasWrittenSinceRead(false);
-    try {
-      if (characteristic.properties?.write && characteristic.writeValueWithResponse) {
-        await characteristic.writeValueWithResponse(bytes);
-      } else if (characteristic.properties?.writeWithoutResponse && characteristic.writeValueWithoutResponse) {
-        await characteristic.writeValueWithoutResponse(bytes);
-      } else if (!characteristic.properties && characteristic.writeValue) {
-        await characteristic.writeValue(bytes);
-      } else {
-        throw new Error('Characteristic นี้ไม่รองรับการเขียนค่า');
-      }
-      setWrittenValue(value);
-      lastWriteRef.current = value;
-      lastWriteTimeRef.current = Date.now();
-      setHasWrittenSinceRead(true);
-      setNotice('ส่งชื่อแล้ว กดอ่านผลทำนายเพื่ออ่านค่าจากอุปกรณ์อีกครั้ง');
-    } catch (error) {
-      setErrorMessage(friendlyError(error));
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const readPrediction = async () => {
-    clearError();
-    const characteristic = characteristicRef.current;
-    if (!characteristic) {
-      setErrorMessage('กรุณาเชื่อมต่ออุปกรณ์ก่อนอ่านผล');
-      return;
-    }
-    if (!hasWrittenSinceRead) {
-      setErrorMessage('เขียนชื่อของคุณและเพื่อนก่อนอ่านผลทำนาย');
-      return;
-    }
-
-    setBusyAction('read-result');
-    setNotice('กำลังรอและอ่านคำตอบจากอุปกรณ์');
-    try {
-      const pendingWrite = lastWriteRef.current;
-      const remainingDelay = Math.max(0, 700 - (Date.now() - lastWriteTimeRef.current));
-      if (remainingDelay) await new Promise(resolve => setTimeout(resolve, remainingDelay));
-      if (characteristicRef.current !== characteristic || lastWriteRef.current !== pendingWrite) {
-        throw new Error('การเชื่อมต่อเปลี่ยนไป กรุณาเชื่อมต่อและส่งชื่อใหม่');
-      }
-      const value = await readCurrentValue(characteristic);
-      if (characteristicRef.current !== characteristic) {
-        throw new Error('อุปกรณ์ตัดการเชื่อมต่อ กรุณาเชื่อมต่อใหม่');
-      }
-      const displayValue = value || '(อุปกรณ์ส่งค่าว่าง)';
-      setInitialValue(displayValue);
-      setPredictedValue(displayValue);
-      setNotice(value === pendingWrite
-        ? 'อ่านค่าล่าสุดแล้ว อุปกรณ์ยังตอบเป็นชื่อที่ส่งไป ยังไม่ได้ตอบผลทำนาย'
-        : value ? 'อ่านค่าล่าสุดจากอุปกรณ์แล้ว สามารถกดอ่านซ้ำได้' : 'อ่านสำเร็จ แต่อุปกรณ์ส่งค่าว่าง');
-    } catch (error) {
-      setNotice('อ่านผลไม่สำเร็จ ดูรายละเอียดข้อผิดพลาดด้านล่าง');
-      setErrorMessage(friendlyError(error));
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const isBusy = busyAction !== null;
-  const showNativeNotice = Platform.OS !== 'web';
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -309,7 +22,7 @@ export default function App() {
           <View style={styles.brandMark}><Text style={styles.brandMarkText}>BG</Text></View>
           <View>
             <Text style={styles.brandName}>BuddyGrade BLE</Text>
-            <Text style={styles.brandCaption}>BLE CLASS PROJECT</Text>
+            <Text style={styles.brandCaption}>{BUILD_VERSION}</Text>
           </View>
           <View style={[styles.statusPill, connected ? styles.statusConnected : styles.statusIdle]}>
             <View style={[styles.statusDot, connected ? styles.dotConnected : styles.dotIdle]} />
@@ -334,9 +47,11 @@ export default function App() {
         <View style={styles.stepsRow}>
           <Step number="01" label="เชื่อมต่อ" active={connected} />
           <View style={styles.stepLine} />
-          <Step number="02" label="ส่งชื่อทีม" active={Boolean(writtenValue)} />
+          <Step number="02" label="อ่านค่า" active={Boolean(initialValue)} />
           <View style={styles.stepLine} />
-          <Step number="03" label="อ่านผล" active={Boolean(predictedValue)} />
+          <Step number="03" label="ส่งชื่อ" active={hasWrittenSinceRead} />
+          <View style={styles.stepLine} />
+          <Step number="04" label="อ่านผล" active={Boolean(predictedValue)} />
         </View>
 
         {showNativeNotice ? (
@@ -367,20 +82,29 @@ export default function App() {
           </View>
         ) : null}
 
+        <View style={[styles.notePanel, { marginBottom: 16 }]}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: diagnosticsOpen }} onPress={() => setDiagnosticsOpen(!diagnosticsOpen)}>
+            <Text style={styles.noteTitle}>{diagnosticsOpen ? '▾' : '▸'} บันทึกคำสั่ง Bluetooth · {BUILD_VERSION}</Text>
+          </Pressable>
+          <Text selectable style={styles.helperText}>{diagnostics.at(-1) || 'ยังไม่มีคำสั่ง Bluetooth'}</Text>
+          {diagnosticsOpen ? <Text selectable style={[styles.helperText, { marginTop: 10 }]}>{diagnostics.join('\n')}</Text> : null}
+        </View>
+
         <View style={[styles.workspace, width < 760 && styles.workspaceNarrow]}>
           <View style={[styles.mainColumn, width < 760 && styles.columnNarrow]}>
             <View style={styles.panel}>
               <SectionHeading number="01" title="เชื่อมต่ออุปกรณ์" caption="เลือกอุปกรณ์ BLE ที่กำลังเปิดอยู่ใกล้คุณ" />
-              <View style={styles.connectionRow}>
+              <View style={[styles.connectionRow, width < 450 && { flexDirection: 'column', alignItems: 'stretch' }]}>
                 <View style={styles.deviceInfo}>
                   <Text style={styles.fieldLabel}>สถานะการเชื่อมต่อ</Text>
                   <Text style={styles.deviceName}>{connected ? deviceName : 'ยังไม่มีอุปกรณ์'}</Text>
                   <Text style={styles.helperText}>{notice}</Text>
+                  {capabilities ? <Text selectable style={styles.helperText}>{capabilities}</Text> : null}
                 </View>
                 <ActionButton
-                  label={connected ? 'ตัดการเชื่อมต่อ' : 'ค้นหาอุปกรณ์'}
-                  onPress={connected ? disconnectDevice : connectDevice}
-                  disabled={isBusy || showNativeNotice || !secureContext || !bluetoothSupported}
+                  label={isBusy ? 'ยกเลิกคำสั่ง / ตัดการเชื่อมต่อ' : connected ? 'ตัดการเชื่อมต่อ' : 'ค้นหาอุปกรณ์'}
+                  onPress={connected || isBusy ? disconnectDevice : connectDevice}
+                  disabled={!connected && !isBusy && (showNativeNotice || !secureContext || !bluetoothSupported)}
                   tone={connected ? 'quiet' : 'primary'}
                 />
               </View>
@@ -439,7 +163,7 @@ export default function App() {
               </View>
               <View style={styles.previewBox}>
                 <Text style={styles.readoutLabel}>VALUE TO WRITE</Text>
-                <Text selectable style={styles.previewText}>{writeValue || 'ชื่อของคุณ, ชื่อเพื่อน'}</Text>
+                <Text selectable style={styles.previewText}>{studentName.trim() || buddyName.trim() ? writeValue : 'ชื่อของคุณ, ชื่อเพื่อน'}</Text>
               </View>
               <ActionButton
                 label="เขียนชื่อไปยังอุปกรณ์"
@@ -464,9 +188,9 @@ export default function App() {
               <View style={styles.resultReadout}>
                 <Text style={styles.resultReadoutLabel}>CHARACTERISTIC RESPONSE</Text>
                 <Text selectable style={[styles.resultValue, !predictedValue && styles.resultPlaceholder]}>
-                  {predictedValue || '—'}
+                  {busyAction === 'read-result' ? 'กำลังอ่าน…' : predictedValue || '—'}
                 </Text>
-                {writtenValue ? <Text style={styles.resultTeam}>ทีม: {writtenValue}</Text> : null}
+                {hasWrittenSinceRead ? <Text style={styles.resultTeam}>ทีม: {writtenValue}</Text> : null}
               </View>
               <ActionButton
                 label="อ่านผลทำนาย"
@@ -494,6 +218,7 @@ export default function App() {
         <View style={styles.footer}>
           <Text style={styles.footerText}>SERVICE UUID · {SERVICE_UUID}</Text>
           <Text style={styles.footerText}>CHAR UUID · {CHAR_UUID}</Text>
+          <Text style={styles.footerText}>VERSION · {BUILD_VERSION}</Text>
         </View>
       </View>
     </ScrollView>
@@ -539,6 +264,7 @@ function ActionButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled, busy: loading }}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
@@ -548,7 +274,7 @@ function ActionButton({
         pressed && !disabled && styles.buttonPressed,
       ]}
     >
-      {loading ? <ActivityIndicator color={tone === 'light' ? '#17394B' : '#FFFFFF'} size="small" /> : null}
+      {loading ? <ActivityIndicator color={tone === 'primary' ? '#FFFFFF' : '#17394B'} size="small" /> : null}
       <Text style={[styles.buttonText, styles[`buttonText_${tone}`], disabled && styles.buttonTextDisabled]}>
         {loading ? 'กำลังทำรายการ…' : label}
       </Text>
@@ -633,14 +359,14 @@ const styles = StyleSheet.create({
   uuidLabel: { color: '#75E3CF', fontSize: 9, fontWeight: '800', letterSpacing: 1, marginRight: 10 },
   uuidValue: { color: '#FFFFFF', fontSize: 11, fontVariant: ['tabular-nums'] },
   stepsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 22, paddingHorizontal: 4 },
-  step: { flexDirection: 'row', alignItems: 'center' },
+  step: { flex: 1, alignItems: 'center', gap: 6 },
   stepNumber: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#E7EAF3', alignItems: 'center', justifyContent: 'center' },
   stepNumberActive: { backgroundColor: '#E4E5FF' },
   stepNumberText: { color: '#7C859B', fontSize: 9, fontWeight: '800' },
   stepNumberTextActive: { color: '#5148D8' },
-  stepLabel: { color: '#7B8499', fontSize: 11, fontWeight: '700', marginLeft: 8 },
+  stepLabel: { color: '#7B8499', fontSize: 11, fontWeight: '700' },
   stepLabelActive: { color: '#5148D8' },
-  stepLine: { height: 1, backgroundColor: '#DDE1EC', flex: 1, marginHorizontal: 12 },
+  stepLine: { height: 1, backgroundColor: '#DDE1EC', flex: 0.35, marginHorizontal: 4, marginBottom: 17 },
   workspace: { flexDirection: 'row', alignItems: 'flex-start', gap: 18 },
   workspaceNarrow: { flexDirection: 'column' },
   mainColumn: { flex: 1.45, minWidth: 0, gap: 14 },
